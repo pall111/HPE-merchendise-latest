@@ -28,25 +28,25 @@ resources:
 images:
   - name: node-backend
     newName: 192.168.56.10:30082/node-backend
-    newTag: "1.1.8"
+    newTag: "1.1.10"
   - name: python-service
     newName: 192.168.56.10:30082/python-service
-    newTag: 1.1.8
+    newTag: 1.1.10
   - name: frontend
     newName: 192.168.56.10:30082/frontend
-    newTag: "1.1.8"
+    newTag: "1.1.10"
   - name: admin-dashboard
     newName: 192.168.56.10:30082/admin-dashboard
-    newTag: "1.1.8"
+    newTag: "1.1.10"
   - name: merchant-portal
     newName: 192.168.56.10:30082/merchant-portal
-    newTag: "1.1.8"
+    newTag: "1.1.10"
   - name: notification-service
     newName: 192.168.56.10:30082/notification-service
-    newTag: 1.1.8
+    newTag: 1.1.10
   - name: loki-rbac-proxy
     newName: 192.168.56.10:30082/loki-rbac-proxy
-    newTag: 1.1.8
+    newTag: 1.1.10
 # Mount the correct nginx.conf (per app port) over the baked-in default
 patches:
   - path: patch-frontend-nginx.yaml
