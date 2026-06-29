@@ -86,6 +86,7 @@ spec:
         - "redoc.dev.nitte.local"
         - "goalert.nitte.local"
         - "argocd.nitte.local"
+        - "nexus.nitte.local"
 ---
 # Storefront (+ shared API / auth / grafana)
 apiVersion: networking.istio.io/v1beta1
@@ -323,3 +324,21 @@ spec:
         - destination:
             host: argocd-server.argocd.svc.cluster.local
             port: { number: 80 }
+---
+# Nexus repository manager UI (lives in the `nexus` namespace). Port 8081 = UI/REST.
+# Image push/pull uses the separate docker connector on 8082 (NodePort 30082) and is
+# NOT routed here — Kaniko keeps pushing to 192.168.56.10:30082 directly.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: nexus-routes
+spec:
+  hosts:
+    - "nexus.nitte.local"
+  gateways:
+    - nitte-gateway
+  http:
+    - route:
+        - destination:
+            host: nexus.nexus.svc.cluster.local
+            port: { number: 8081 }
