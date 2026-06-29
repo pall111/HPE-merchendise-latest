@@ -1,0 +1,70 @@
+# ArgoCD Applications — declarative source of truth (Admin cluster / mastervm).
+#
+# Apply on the Admin cluster:  kubectl apply -f k8s/argocd/applications.yaml
+#
+# LINKING DEV/PROD LATER
+# ----------------------
+# Today every app targets the Admin cluster itself (in-cluster API
+# `https://kubernetes.default.svc`). When the standalone Dev and Prod single-node
+# clusters are ready, register them once (see k8s/argocd/cluster-secret.template.yaml
+# or `argocd cluster add`), then change ONLY the `destination.server` field below from
+# the in-cluster URL to that cluster's API URL (e.g. https://192.168.56.11:6443) and
+# re-apply. Nothing else changes — repo, path and sync policy stay the same.
+---
+# Demo app — node-agnostic, proves the GitOps loop on the single Admin node today.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nitte-demo
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/pall111/HPE-merchendise-latest.git
+    targetRevision: main
+    path: k8s/demo
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo
+  syncPolicy:
+    automated: { selfHeal: true, prune: true }
+    syncOptions: [ CreateNamespace=true ]
+---
+# Development environment.
+# LINK LATER: set destination.server to the Dev cluster API (e.g. https://192.168.56.11:6443).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nitte-dev
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/pall111/HPE-merchendise-latest.git
+    targetRevision: main
+    path: k8s/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc   # LINK LATER -> https://<dev-cluster-ip>:6443
+    namespace: nitte-dev
+  syncPolicy:
+    automated: { selfHeal: true, prune: false }
+    syncOptions: [ CreateNamespace=true, ApplyOutOfSyncOnly=true ]
+---
+# Production environment — manual promotion gate (no automated sync).
+# LINK LATER: set destination.server to the Prod cluster API (e.g. https://192.168.56.12:6443).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nitte-prod
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/pall111/HPE-merchendise-latest.git
+    targetRevision: main
+    path: k8s/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc   # LINK LATER -> https://<prod-cluster-ip>:6443
+    namespace: nitte-prod
+  syncPolicy:
+    syncOptions: [ CreateNamespace=true ]

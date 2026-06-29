@@ -103,3 +103,7 @@ target/
 
 # Local secrets — never commit
 passwords.txt
+
+# Filled-in ArgoCD external-cluster secrets (contain bearer tokens) — keep only the template
+k8s/argocd/cluster-dev.yaml
+k8s/argocd/cluster-prod.yaml
