@@ -85,10 +85,10 @@ spec:
             // Polling can't ignore the pipeline's own tag-bump commit, so detect the
             // [ci skip] marker here and no-op the build/deploy stages. This prevents the
             // CD commit -> rebuild -> CD commit infinite loop without any job-UI config.
-            env.GIT_MSG  = sh(returnStdout: true, script: 'git log -1 --pretty=%B').trim()
+            env.GIT_MSG  = sh(returnStdout: true, script: 'git config --global --add safe.directory "*"; git log -1 --pretty=%B').trim()
             env.CI_SKIP  = env.GIT_MSG.contains('[ci skip]') ? 'true' : 'false'
           }
-          sh 'git config --global --add safe.directory "*"; git rev-parse --short HEAD > .gitsha && echo "Building tag $TAG from $(cat .gitsha) (ci_skip=$CI_SKIP)"'
+          sh 'git rev-parse --short HEAD > .gitsha && echo "Building tag $TAG from $(cat .gitsha) (ci_skip=$CI_SKIP)"'
           script {
             if (env.CI_SKIP == 'true') {
               currentBuild.result = 'NOT_BUILT'
