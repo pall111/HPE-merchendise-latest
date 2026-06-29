@@ -68,9 +68,10 @@ spec:
   }
 
   // Auto-build on repo changes. Jenkins is behind the SSH tunnel (no inbound webhook),
-  // so we POLL GitHub every ~2 min. The job's SCM is configured with an Excluded Region
-  // of `k8s/.*` (set in the job UI) so the pipeline's OWN tag-bump commit to k8s/ does
-  // NOT re-trigger a build — only source changes do. ArgoCD watches k8s/ for the bump.
+  // so we POLL GitHub every ~2 min. The pipeline's OWN tag-bump commit is marked
+  // `[ci skip]`; the Checkout stage detects that marker and no-ops the build/deploy
+  // stages (see CI_SKIP), so the CD commit can't trigger an endless rebuild loop.
+  // ArgoCD watches k8s/ for the bump independently.
   triggers {
     pollSCM('H/2 * * * *')
   }
@@ -80,12 +81,26 @@ spec:
       steps {
         container('tools') {
           checkout scm
-          sh 'git config --global --add safe.directory "*"; git rev-parse --short HEAD > .gitsha && echo "Building tag $TAG from $(cat .gitsha)"'
+          script {
+            // Polling can't ignore the pipeline's own tag-bump commit, so detect the
+            // [ci skip] marker here and no-op the build/deploy stages. This prevents the
+            // CD commit -> rebuild -> CD commit infinite loop without any job-UI config.
+            env.GIT_MSG  = sh(returnStdout: true, script: 'git log -1 --pretty=%B').trim()
+            env.CI_SKIP  = env.GIT_MSG.contains('[ci skip]') ? 'true' : 'false'
+          }
+          sh 'git config --global --add safe.directory "*"; git rev-parse --short HEAD > .gitsha && echo "Building tag $TAG from $(cat .gitsha) (ci_skip=$CI_SKIP)"'
+          script {
+            if (env.CI_SKIP == 'true') {
+              currentBuild.result = 'NOT_BUILT'
+              echo "Latest commit carries [ci skip] (the CD tag-bump). Skipping build & deploy."
+            }
+          }
         }
       }
     }
 
     stage('Build & Push (Kaniko)') {
+      when { expression { env.CI_SKIP != 'true' } }
       steps {
         container('kaniko') {
           sh '''
@@ -110,6 +125,7 @@ spec:
     }
 
     stage('Bump tags & deploy (GitOps)') {
+      when { expression { env.CI_SKIP != 'true' } }
       steps {
         container('tools') {
           withCredentials([usernamePassword(credentialsId: 'github-token',
