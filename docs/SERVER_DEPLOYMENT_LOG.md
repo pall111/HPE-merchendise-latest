@@ -1083,3 +1083,65 @@ anomaly score → `949110`), while home/products/login return 200. Tune false po
 reading the offending rule id from the gateway logs
 (`kubectl logs -n istio-system -l istio=ingressgateway | grep -i coraza`) and adding a
 `SecRuleRemoveById <id>` directive rather than weakening the whole WAF.
+
+---
+
+## 22. Single-node operation: build-on-push (Jenkins→Nexus) + ArgoCD demo
+
+The cluster was stripped to **one node (`mastervm`)**; `workervm1`/`workervm2` are
+`NotReady` and off-limits (teammates are rebuilding them as standalone single-node
+clusters). The goal here is narrow: **any push to GitHub triggers a Jenkins build that
+pushes artifacts to Nexus**, and **ArgoCD is reachable and demonstrably syncing** — all on
+`mastervm` alone.
+
+### 22.1 What still runs on the single node
+`jenkins-0` (2/2), `nexus` (1/1), all `argocd-*` (1/1), `istio-ingressgateway` (1/1).
+The real apps `nitte-dev` / `nitte-prod` stay `Progressing` because their pods are pinned
+(nodeSelector `dev` / `prod`) to the removed workers and sit `Pending`. **Leave them as-is** —
+they self-heal when the worker nodes return. They are not part of this task.
+
+### 22.2 Build-on-push (Jenkins → Nexus)
+Jenkins is behind the SSH tunnel with no inbound webhook, so the `Jenkinsfile` polls GitHub:
+```groovy
+triggers { pollSCM('H/2 * * * *') }   // ~every 2 min
+```
+The pipeline builds the 7 service images with Kaniko and pushes them to Nexus
+`192.168.56.10:30082`. The CD stage bumps tags in `k8s/base/kustomization.yaml` and pushes
+back to `main` with a **`[ci skip]`** message.
+
+**One-time job config (Jenkins UI → `nitte-ci` → Configure → Pipeline from SCM):**
+- Add **Additional Behaviour → "Polling ignores commits in certain paths"**, Excluded
+  Regions: `k8s/.*`. This stops the pipeline's own tag-bump commit from re-triggering a build
+  (only source changes do). Run the job once manually to register the poll trigger.
+
+Result: push source → poll detects change → Kaniko build → images in Nexus. Verify in the
+Nexus UI (`docker-hosted` repo) or:
+```bash
+curl -s -u <nexus-user>:<pass> http://192.168.56.10:30082/v2/node-backend/tags/list
+```
+
+### 22.3 ArgoCD access (no NodePort needed)
+ArgoCD UI is exposed through the **existing Istio gateway** rather than a new NodePort, so
+the current tunnel + `/etc/hosts` mapping already cover it:
+- `k8s/overlays/dev/mesh.yaml` adds host `argocd.nitte.local` to the gateway + a
+  `VirtualService` routing to `argocd-server.argocd.svc.cluster.local:80`.
+- `k8s/waf-coraza.yaml` adds `argocd` to the tooling-host regex (rule `id:1000`) so CRS
+  doesn't trip the ArgoCD GraphQL/SPA traffic.
+- ArgoCD must serve plain HTTP for the HTTP route. Set once:
+  ```bash
+  kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge \
+    -p '{"data":{"server.insecure":"true"}}'
+  kubectl rollout restart deployment argocd-server -n argocd
+  ```
+Then browse `http://argocd.nitte.local:8080` over the existing
+`ssh -L 8080:192.168.56.10:32367 arcade@117.250.206.138` tunnel. Admin password:
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+### 22.4 GitOps demo app that actually goes green (`nitte-demo`)
+Because `nitte-dev`/`nitte-prod` can't schedule on the single node, `k8s/demo/` provides a
+node-agnostic nginx (`demo` namespace, **no nodeSelector**, istio-injection disabled) so the
+demo shows **Synced + Healthy**. Register the app once (manifest in `k8s/demo/README.md`),
+then prove the loop by editing `k8s/demo/demo-app.yaml` (e.g. `replicas: 2`) and pushing —
+ArgoCD syncs it automatically.

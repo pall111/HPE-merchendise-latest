@@ -67,6 +67,14 @@ spec:
     buildDiscarder(logRotator(numToKeepStr: '15'))
   }
 
+  // Auto-build on repo changes. Jenkins is behind the SSH tunnel (no inbound webhook),
+  // so we POLL GitHub every ~2 min. The job's SCM is configured with an Excluded Region
+  // of `k8s/.*` (set in the job UI) so the pipeline's OWN tag-bump commit to k8s/ does
+  // NOT re-trigger a build — only source changes do. ArgoCD watches k8s/ for the bump.
+  triggers {
+    pollSCM('H/2 * * * *')
+  }
+
   stages {
     stage('Checkout') {
       steps {
@@ -127,7 +135,7 @@ spec:
               if git diff --cached --quiet; then
                 echo "No tag changes to commit."
               else
-                git commit -m "ci: deploy [$SVCS] at $TAG (build $BUILD_NUMBER)"
+                git commit -m "ci: deploy [$SVCS] at $TAG (build $BUILD_NUMBER) [ci skip]"
                 git push "https://${GH_USER}:${GH_TOKEN}@github.com/pall111/HPE-merchendise-latest.git" HEAD:main
                 echo "Pushed tag bump — ArgoCD will sync nitte-dev."
               fi

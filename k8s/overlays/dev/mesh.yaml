@@ -85,6 +85,7 @@ spec:
         - "jenkins.nitte.local"
         - "redoc.dev.nitte.local"
         - "goalert.nitte.local"
+        - "argocd.nitte.local"
 ---
 # Storefront (+ shared API / auth / grafana)
 apiVersion: networking.istio.io/v1beta1
@@ -305,3 +306,20 @@ spec:
         - destination:
             host: goalert.goalert.svc.cluster.local
             port: { number: 8081 }
+---
+# ArgoCD UI (lives in the `argocd` namespace). argocd-server must run with
+# server.insecure=true (serves HTTP) for this HTTP gateway route to work.
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: argocd-routes
+spec:
+  hosts:
+    - "argocd.nitte.local"
+  gateways:
+    - nitte-gateway
+  http:
+    - route:
+        - destination:
+            host: argocd-server.argocd.svc.cluster.local
+            port: { number: 80 }
